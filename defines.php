@@ -1,5 +1,4 @@
 <?php
-session_start();
 //FACEBOOK
 define( 'FACEBOOK_APP_ID', 'YOUR_APP_ID_HERE' );
 define( 'FACEBOOK_APP_SECRET', 'APP_SECRET_HERE' );
