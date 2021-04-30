@@ -2,35 +2,20 @@
 include '../../settings/db.php';
 include 'defines.php';
 
-//db model request
+//db model request(Go With Your Own Way)
 $q = "SELECT MAX(id) as id FROM POST_TABLE_NAME";
 $r = mysqli_fetch_assoc(mysqli_query(YOUR_DB_VARIABLE,$q));
 $id = $r['id'];
 $q2 = "SELECT * FROM POST_TABLE_NAME where id ='$id'";
 $p = mysqli_fetch_assoc(mysqli_query(YOUR_DB_VARIABLE,$q2));
+
+
 $movieLink = 'https://YOursite.com/postpage.php?id='.$p['id']; //link of your post
-$message = 'Watch '. $p['title'].' full movie free';
-
-//twitter
-require 'twitter/autoload.php';
-
-use Abraham\TwitterOAuth\TwitterOAuth;
-
-$connection = new TwitterOAuth($twitter_api_key, $twitter_api_secret, $twitter_access_token, $twitter_access_token_secret);
-$content = $connection->get("account/verify_credentials");
-
-//tw
-$status = 'Watch '.$p['title']. ' here: https://YOursite.com/postpage.php?id='.$p['id'];;
-$post_tweets = $connection->post("statuses/update", ["status" => $status]);
+$message = 'Watch '. $p['title'].' full movie free'; //message
 
 
-// api call funtion for IG
 
-
-//facebook
-
-// load graph-sdk files
-require_once __DIR__ . '/vendor/autoload.php';
+//CURL
 function makeApiCall( $endpoint, $type, $params ) {
     $ch = curl_init();
 
@@ -38,7 +23,8 @@ function makeApiCall( $endpoint, $type, $params ) {
         curl_setopt( $ch, CURLOPT_URL, $endpoint );
         curl_setopt( $ch, CURLOPT_POSTFIELDS, http_build_query( $params ) );
         curl_setopt( $ch, CURLOPT_POST, 1 );
-    } elseif ( 'GET' == $type ) {
+    }
+    elseif ( 'GET' == $type ) {
         curl_setopt( $ch, CURLOPT_URL, $endpoint . '?' . http_build_query( $params ) );
     }
 
@@ -51,32 +37,60 @@ function makeApiCall( $endpoint, $type, $params ) {
 
     return json_decode( $response, true );
 }
-function resize_image($file, $w, $h, $crop=FALSE) {
-    list($width, $height) = getimagesize($file);
-    $r = $width / $height;
-    if ($crop) {
-        if ($width > $height) {
-            $width = ceil($width-($width*abs($r-$w/$h)));
-        } else {
-            $height = ceil($height-($height*abs($r-$w/$h)));
-        }
-        $newwidth = $w;
-        $newheight = $h;
-    } else {
-        if ($w/$h > $r) {
-            $newwidth = $h*$r;
-            $newheight = $h;
-        } else {
-            $newheight = $w/$r;
-            $newwidth = $w;
-        }
-    }
-    $src = imagecreatefromjpeg($file);
-    $dst = imagecreatetruecolor($newwidth, $newheight);
-    imagecopyresampled($dst, $src, 0, 0, 0, 0, $newwidth, $newheight, $width, $height);
 
-    return $dst;
+//image resizing (as insta prefer 1:1 img and more then 200x200)
+function resize($target, $newcopy, $w, $h, $ext) {
+    list($w_orig, $h_orig) = getimagesize($target);
+    $scale_ratio = $w_orig / $h_orig;
+    if (($w / $h) > $scale_ratio) {
+        $w = $h * $scale_ratio;
+    } else {
+        $h = $w / $scale_ratio;
+    }
+    $img = "";
+    $ext = strtolower($ext);
+    if ($ext == "gif"){
+        $img = imagecreatefromgif($target);
+    } else if($ext =="png"){
+        $img = imagecreatefrompng($target);
+    } else {
+        $img = imagecreatefromjpeg($target);
+    }
+    $tci = imagecreatetruecolor($w, $h);
+    //imagecopyresampled(dst_img, src_img, dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h)
+    imagecopyresampled($tci, $img, 0, 0, 0, 0, $w, $h, $w_orig, $h_orig);
+    if ($ext == "gif"){
+        imagegif($tci, $newcopy);
+    } else if($ext =="png"){
+        imagepng($tci, $newcopy);
+    } else {
+        imagejpeg($tci, $newcopy, 84);
+    }
 }
+
+
+//twitter
+require 'twitter/autoload.php';
+use Abraham\TwitterOAuth\TwitterOAuth;
+
+$connection = new TwitterOAuth($twitter_api_key, $twitter_api_secret, $twitter_access_token, $twitter_access_token_secret);
+$content = $connection->get("account/verify_credentials");
+
+//tw
+$status = 'Watch '.$p['title']. ' here: https://YOursite.com/postpage.php?id='.$p['id'];;
+$post_tweets = $connection->post("statuses/update", ["status" => $status]);//posted to twitter
+
+
+
+/*********
+ *
+ * facebook and instagram start here
+ *
+*/
+
+// load graph-sdk files
+require_once __DIR__ . '/vendor/autoload.php';
+
 // facebook credentials array
 $creds = array(
     'app_id' => FACEBOOK_APP_ID,
@@ -93,8 +107,9 @@ $helper = $facebook->getRedirectLoginHelper();
 
 // oauth object
 $oAuth2Client = $facebook->getOAuth2Client();
-//echo $helper->getAccessToken();
-if ( isset( $_GET['code'] ) ) { // get access token
+
+// get access token
+if ( isset( $_GET['code'] ) ) {
     try {
         $accessToken = $helper->getAccessToken();
     } catch(Facebook\Exceptions\FacebookResponseException $e) {
@@ -122,17 +137,15 @@ if ( isset( $_GET['code'] ) ) { // get access token
     }
   //echo $accessToken;
     $new_accessToken= str_replace(' ', '', $accessToken);
-    $endpointFormat = ENDPOINT_BASE . '{page-id}?fields=access_token&access_token={access-token}';
     $fbAccountEndpoint = ENDPOINT_BASE . $pageId;
 
     // endpoint params
-    $igParams = array(
+    $fbParams = array(
         'fields' => 'access_token',
         'access_token' => $new_accessToken
     );
-
     // add params to endpoint
-    $fbAccountEndpoint .= '?' . http_build_query( $igParams );
+    $fbAccountEndpoint .= '?' . http_build_query( $fbParams );
 
     // setup curl
     $ch = curl_init();
@@ -154,7 +167,7 @@ if ( isset( $_GET['code'] ) ) { // get access token
     ];
     try
     {
-        $response = $facebook->post('/me/feed', $data,$page_access);
+        $response = $facebook->post('/me/feed', $data,$page_access);//if true the posted to facebook page
     }
     catch(Facebook\Exceptions\FacebookResponseException $e)
     {
@@ -166,58 +179,31 @@ if ( isset( $_GET['code'] ) ) { // get access token
         echo 'Facebook SDK returned an Error for page: '.$e->getMessage();
         exit;
     }
+
+
+    /***
+     * intagram start here
+     */
     if($response){
         /***
          * IMAGE
          */
-
-
         $img_name = $p['thumbnail'];
         $copyFrom = '../../uploads/'.$img_name;
-        copy($copyFrom, $img_name);
+        copy($copyFrom, $img_name);//making a temp image file with resize reg
         $file_name = $img_name;
-        function resize($target, $newcopy, $w, $h, $ext) {
-            list($w_orig, $h_orig) = getimagesize($target);
-            $scale_ratio = $w_orig / $h_orig;
-            if (($w / $h) > $scale_ratio) {
-                $w = $h * $scale_ratio;
-            } else {
-                $h = $w / $scale_ratio;
-            }
-            $img = "";
-            $ext = strtolower($ext);
-            if ($ext == "gif"){
-                $img = imagecreatefromgif($target);
-            } else if($ext =="png"){
-                $img = imagecreatefrompng($target);
-            } else {
-                $img = imagecreatefromjpeg($target);
-            }
-            $tci = imagecreatetruecolor($w, $h);
-            // imagecopyresampled(dst_img, src_img, dst_x, dst_y, src_x, src_y, dst_w, dst_h, src_w, src_h)
-            imagecopyresampled($tci, $img, 0, 0, 0, 0, $w, $h, $w_orig, $h_orig);
-            if ($ext == "gif"){
-                imagegif($tci, $newcopy);
-            } else if($ext =="png"){
-                imagepng($tci, $newcopy);
-            } else {
-                imagejpeg($tci, $newcopy, 84);
-            }
-        }
         $ext = explode(".", $file_name);
         $newFile = '_'.$file_name;
-
         resize($file_name, $newFile, 350, 350, $ext);
-        $link = 'https://movies.delux.icu/admin/autopost/'.$newFile;
+        $link = 'https://your_website/'.$newFile;
         $imageMediaObjectEndpoint = ENDPOINT_BASE . $instagramAccountId . '/media';
+
         $imageMediaObjectEndpointParams = array( // POST
             'image_url' => $link,
             'caption' => $message.' '.$movieLink,
             'access_token' => $new_accessToken
         );
        $imageMediaObjectResponseArray = makeApiCall( $imageMediaObjectEndpoint, 'POST', $imageMediaObjectEndpointParams );
-
-       //print_r($imageMediaObjectResponseArray);
 
         // set status to in progress
         $imageMediaObjectStatusCode = 'IN_PROGRESS';
@@ -242,21 +228,18 @@ if ( isset( $_GET['code'] ) ) { // get access token
             'access_token' => $new_accessToken
         );
         $publishImageResponseArray = makeApiCall( $publishImageEndpoint, 'POST', $publishEndpointParams );
+        echo '<a href="https://YOursite.com">go back</a>';
+
         /***
-         * API LIMIT
+         * unlink all temp file
          */
-        // check user api limit
-        $limitEndpoint = ENDPOINT_BASE . $instagramAccountId . '/content_publishing_limit';
-        $limitEndpointParams = array( // get params
-            'fields' => 'config,quota_usage',
-            'access_token' => $accessToken
-        );
-        $limitResponseArray = makeApiCall( $limitEndpoint, 'GET', $limitEndpointParams );
-        echo '<a href="https://YOursite.com">go back to movie manager</a>';
         unlink($newFile);
+        unlink($file_name);
     }
 
-} else { // display login url
+}
+else
+{ // display login url
     $permissions = [
         'public_profile',
         'instagram_basic',
